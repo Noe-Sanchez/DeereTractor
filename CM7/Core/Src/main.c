@@ -1,6 +1,6 @@
 #include "main.h"
 #include "myprintf.h"
-#include "mpu9250.h"
+#include "MPU9250/mpu9250.h"
 #ifndef HSEM_ID_0
 #define HSEM_ID_0 (0U)
 #endif
