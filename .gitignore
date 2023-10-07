@@ -1,0 +1,12 @@
+Common/
+Drivers/
+CM4/Debug/
+CM4/Drivers/
+CM7/Debug/
+CM7/Drivers/
+.launch
+*.ld
+.project
+.mxproject
+.settings/
+.cproject
