@@ -1,55 +1,145 @@
+/* USER CODE BEGIN Header */
+/**
+  ******************************************************************************
+  * @file           : main.c
+  * @brief          : Main program body
+  ******************************************************************************
+  * @attention
+  *
+  * Copyright (c) 2023 STMicroelectronics.
+  * All rights reserved.
+  *
+  * This software is licensed under terms that can be found in the LICENSE file
+  * in the root directory of this software component.
+  * If no LICENSE file comes with this software, it is provided AS-IS.
+  *
+  ******************************************************************************
+  */
+/* USER CODE END Header */
+/* Includes ------------------------------------------------------------------*/
 #include "main.h"
+
+/* Private includes ----------------------------------------------------------*/
+/* USER CODE BEGIN Includes */
+
 #include "myprintf.h"
 #include "MPU9250/mpu9250.h"
-#ifndef HSEM_ID_0
-#define HSEM_ID_0 (0U)
-#endif
 
-// Interface handles
+/* USER CODE END Includes */
+
+/* Private typedef -----------------------------------------------------------*/
+/* USER CODE BEGIN PTD */
+
+/* USER CODE END PTD */
+
+/* Private define ------------------------------------------------------------*/
+/* USER CODE BEGIN PD */
+
+#ifndef HSEM_ID_0
+#define HSEM_ID_0 (0U) /* HW semaphore 0*/
+#endif
+/* USER CODE END PD */
+
+/* Private macro -------------------------------------------------------------*/
+/* USER CODE BEGIN PM */
+
+/* USER CODE END PM */
+
+/* Private variables ---------------------------------------------------------*/
+
 I2C_HandleTypeDef hi2c2;
+
 SPI_HandleTypeDef hspi1;
+
+UART_HandleTypeDef huart5;
 UART_HandleTypeDef huart3;
 
-// System prototypes
+/* USER CODE BEGIN PV */
+
+/* USER CODE END PV */
+
+/* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 void PeriphCommonClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_I2C2_Init(void);
 static void MX_SPI1_Init(void);
+static void MX_UART5_Init(void);
+/* USER CODE BEGIN PFP */
 
-int main( void ) {
+/* USER CODE END PFP */
+
+/* Private user code ---------------------------------------------------------*/
+/* USER CODE BEGIN 0 */
+
+/* USER CODE END 0 */
+
+/**
+  * @brief  The application entry point.
+  * @retval int
+  */
+int main(void)
+{
+  /* USER CODE BEGIN 1 */
+
+  /* USER CODE END 1 */
+/* USER CODE BEGIN Boot_Mode_Sequence_0 */
   int32_t timeout;
+/* USER CODE END Boot_Mode_Sequence_0 */
 
-  // First boot sequence
+/* USER CODE BEGIN Boot_Mode_Sequence_1 */
+  /* Wait until CPU2 boots and enters in stop mode or timeout*/
   timeout = 0xFFFF;
-  while( (__HAL_RCC_GET_FLAG(RCC_FLAG_D2CKRDY) != RESET ) && ( timeout-- > 0 ));
-  if ( timeout < 0 ) {
-    Error_Handler();
+  while((__HAL_RCC_GET_FLAG(RCC_FLAG_D2CKRDY) != RESET) && (timeout-- > 0));
+  if ( timeout < 0 )
+  {
+  Error_Handler();
   }
+/* USER CODE END Boot_Mode_Sequence_1 */
+  /* MCU Configuration--------------------------------------------------------*/
 
-  // System function calls
+  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
+
+  /* USER CODE BEGIN Init */
+
+  /* USER CODE END Init */
+
+  /* Configure the system clock */
   SystemClock_Config();
+
+/* Configure the peripherals common clocks */
   PeriphCommonClock_Config();
+/* USER CODE BEGIN Boot_Mode_Sequence_2 */
+/* When system initialization is finished, Cortex-M7 will release Cortex-M4 by means of
+HSEM notification */
+/*HW semaphore Clock enable*/
+__HAL_RCC_HSEM_CLK_ENABLE();
+/*Take HSEM */
+HAL_HSEM_FastTake(HSEM_ID_0);
+/*Release HSEM in order to notify the CPU2(CM4)*/
+HAL_HSEM_Release(HSEM_ID_0,0);
+/* wait until CPU2 wakes up from stop mode */
+timeout = 0xFFFF;
+while((__HAL_RCC_GET_FLAG(RCC_FLAG_D2CKRDY) == RESET) && (timeout-- > 0));
+if ( timeout < 0 )
+{
+Error_Handler();
+}
+/* USER CODE END Boot_Mode_Sequence_2 */
 
-  // Hardware semaphore signaling
-  __HAL_RCC_HSEM_CLK_ENABLE();
-  HAL_HSEM_FastTake(HSEM_ID_0);
-  HAL_HSEM_Release(HSEM_ID_0,0);
+  /* USER CODE BEGIN SysInit */
 
-  // Second boot sequence
-  timeout = 0xFFFF;
-  while( (__HAL_RCC_GET_FLAG(RCC_FLAG_D2CKRDY) == RESET ) && (timeout-- > 0));
-  if ( timeout < 0 ) {
-    Error_Handler();
-  }
+  /* USER CODE END SysInit */
 
-  // Peripheral setup
+  /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_USART3_UART_Init();
   MX_I2C2_Init();
   MX_SPI1_Init();
+  MX_UART5_Init();
+  /* USER CODE BEGIN 2 */
 
   mpu9250 mpu;
 
@@ -62,21 +152,35 @@ int main( void ) {
 
   mpu.mag_resolution =  (10.0 * 4912.0 / 8190.0);
 
-  // Main loop
-  while( 1 ) {
-    mpu9250_update_accel_gyro(&mpu);
-    printf("X: %.2f Y: %.2f Z: %.2f P: %.2f Q: %.2f R: %.2f Temp: %.2f\r\n", mpu.accel_x, mpu.accel_y, mpu.accel_z, mpu.gyro_x, mpu.gyro_y, mpu.gyro_z, mpu.temp);
-    HAL_Delay(40);
-  }
-}
+  //char test[] = "AT+UART=9600,1,0";
+  char test[] = "Hola\n\r";
+  //test = "Hola\r\n";
+  HAL_GPIO_WritePin(EN_GPIO_Port, EN_Pin, GPIO_PIN_RESET);
+  HAL_Delay(2000);
+  //HAL_UART_Transmit(&huart5, (uint8_t *)test, sizeof(test), HAL_MAX_DELAY);
+  //HAL_GPIO_WritePin(EN_GPIO_Port, EN_Pin, GPIO_PIN_RESET);
 
-// System Functions (left untouched)
+  char rx_buffer[20];
+
+  /* USER CODE END 2 */
+
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
+  while (1)
+  {
+    /* USER CODE END WHILE */
+
+    /* USER CODE BEGIN 3 */
+  }
+  /* USER CODE END 3 */
+}
 
 /**
   * @brief System Clock Configuration
   * @retval None
   */
-void SystemClock_Config(void){
+void SystemClock_Config(void)
+{
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
 
@@ -246,6 +350,54 @@ static void MX_SPI1_Init(void)
 }
 
 /**
+  * @brief UART5 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_UART5_Init(void)
+{
+
+  /* USER CODE BEGIN UART5_Init 0 */
+
+  /* USER CODE END UART5_Init 0 */
+
+  /* USER CODE BEGIN UART5_Init 1 */
+
+  /* USER CODE END UART5_Init 1 */
+  huart5.Instance = UART5;
+  huart5.Init.BaudRate = 115200;
+  huart5.Init.WordLength = UART_WORDLENGTH_8B;
+  huart5.Init.StopBits = UART_STOPBITS_1;
+  huart5.Init.Parity = UART_PARITY_NONE;
+  huart5.Init.Mode = UART_MODE_TX_RX;
+  huart5.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart5.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart5.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart5.Init.ClockPrescaler = UART_PRESCALER_DIV1;
+  huart5.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart5) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_SetTxFifoThreshold(&huart5, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_SetRxFifoThreshold(&huart5, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_DisableFifoMode(&huart5) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN UART5_Init 2 */
+
+  /* USER CODE END UART5_Init 2 */
+
+}
+
+/**
   * @brief USART3 Initialization Function
   * @param None
   * @retval None
@@ -315,6 +467,9 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, LD1_Pin|LD3_Pin, GPIO_PIN_RESET);
 
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(EN_GPIO_Port, EN_Pin, GPIO_PIN_SET);
+
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
@@ -328,14 +483,18 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(SPI_CS_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : LD1_Pin LD3_Pin */
-  GPIO_InitStruct.Pin = LD1_Pin|LD3_Pin;
+  /*Configure GPIO pins : LD1_Pin EN_Pin LD3_Pin */
+  GPIO_InitStruct.Pin = LD1_Pin|EN_Pin|LD3_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
 }
+
+/* USER CODE BEGIN 4 */
+
+/* USER CODE END 4 */
 
 /**
   * @brief  This function is executed in case of error occurrence.
