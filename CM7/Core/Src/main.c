@@ -153,10 +153,10 @@ Error_Handler();
   mpu.mag_resolution =  (10.0 * 4912.0 / 8190.0);
 
   //char test[] = "AT+UART=9600,1,0";
-  char test[] = "Hola\n\r";
+  //char test[] = "Hola\n\r";
   //test = "Hola\r\n";
-  HAL_GPIO_WritePin(EN_GPIO_Port, EN_Pin, GPIO_PIN_RESET);
-  HAL_Delay(2000);
+  //HAL_GPIO_WritePin(EN_GPIO_Port, EN_Pin, GPIO_PIN_RESET);
+  //HAL_Delay(2000);
   //HAL_UART_Transmit(&huart5, (uint8_t *)test, sizeof(test), HAL_MAX_DELAY);
   //HAL_GPIO_WritePin(EN_GPIO_Port, EN_Pin, GPIO_PIN_RESET);
 
@@ -169,6 +169,17 @@ Error_Handler();
   while (1)
   {
     /* USER CODE END WHILE */
+
+	mpu9250_update_accel_gyro(&mpu);
+    printf("X: %.2f Y: %.2f Z: %.2f P: %.2f Q: %.2f R: %.2f Temp: %.2f\r\n", mpu.accel_x, mpu.accel_y, mpu.accel_z, mpu.gyro_x, mpu.gyro_y, mpu.gyro_z, mpu.temp);
+	HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
+
+	//HAL_UART_Receive(&huart5, &rx_buffer, sizeof(rx_buffer), 200);
+	//while (HAL_UART_GetState(&huart5) != HAL_UART_STATE_READY) {}
+
+	//printf((uint8_t*)rx_buffer);
+	HAL_Delay(100);
+
 
     /* USER CODE BEGIN 3 */
   }
