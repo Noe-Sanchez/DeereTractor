@@ -18,13 +18,11 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "cmsis_os.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
 #include "myprintf.h"
-#include "MPU9250/mpu9250.h"
-
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -47,26 +45,67 @@
 
 /* Private variables ---------------------------------------------------------*/
 
-I2C_HandleTypeDef hi2c2;
+TIM_HandleTypeDef htim13;
+TIM_HandleTypeDef htim14;
 
-SPI_HandleTypeDef hspi1;
-
-UART_HandleTypeDef huart5;
 UART_HandleTypeDef huart3;
 
+/* Definitions for defaultTask */
+osThreadId_t defaultTaskHandle;
+const osThreadAttr_t defaultTask_attributes = {
+  .name = "defaultTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
 /* USER CODE BEGIN PV */
+
+osThreadId_t Handle_Action_TractionSetpoint;
+osThreadId_t Handle_Task_Steering;
+osThreadId_t Handle_Task_StateMachine;
+osThreadId_t Handle_Task_UART;
+
+const osThreadAttr_t Attributes_Action_TractionSetpoint = {
+  .name = "Action_TractionSetpoint",
+  .stack_size = 128 * 8,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+
+const osThreadAttr_t Attributes_Task_Steering = {
+  .name = "Task_Steering",
+  .stack_size = 128 * 8,
+  .priority = (osPriority_t) osPriorityAboveNormal,
+};
+
+const osThreadAttr_t Attributes_Task_StateMachine = {
+  .name = "Task_StateMachine",
+  .stack_size = 128 * 8,
+  .priority = (osPriority_t) osPriorityAboveNormal,
+};
+
+const osThreadAttr_t Attributes_Task_UART = {
+  .name = "Task_UART",
+  .stack_size = 128 * 8,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+
+static float* traction_setpoint;
+static float delta_steering;
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
-void PeriphCommonClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART3_UART_Init(void);
-static void MX_I2C2_Init(void);
-static void MX_SPI1_Init(void);
-static void MX_UART5_Init(void);
+static void MX_TIM14_Init(void);
+static void MX_TIM13_Init(void);
+void StartDefaultTask(void *argument);
+
 /* USER CODE BEGIN PFP */
+void Function_Action_TractionSetpoint(void *argument);
+void Function_Task_Steering(void *argument);
+void Function_Task_StateMachine(void *argument);
+void Function_Task_UART(void *argument);
 
 /* USER CODE END PFP */
 
@@ -108,9 +147,6 @@ int main(void)
 
   /* Configure the system clock */
   SystemClock_Config();
-
-/* Configure the peripherals common clocks */
-  PeriphCommonClock_Config();
 /* USER CODE BEGIN Boot_Mode_Sequence_2 */
 /* When system initialization is finished, Cortex-M7 will release Cortex-M4 by means of
 HSEM notification */
@@ -136,50 +172,63 @@ Error_Handler();
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_USART3_UART_Init();
-  MX_I2C2_Init();
-  MX_SPI1_Init();
-  MX_UART5_Init();
+  MX_TIM14_Init();
+  MX_TIM13_Init();
   /* USER CODE BEGIN 2 */
 
-  mpu9250 mpu;
-
-  mpu.hspi         = &hspi1;
-  mpu.cs_gpio_port = SPI_CS_GPIO_Port;
-  mpu.cs_gpio_pin  = SPI_CS_Pin;
-
-  mpu9250_set_accel_resolution(&mpu, ACCEL_RESOLUTION_2G);
-  mpu9250_set_gyro_resolution( &mpu, GYRO_RESOLUTION_250DPS);
-
-  mpu.mag_resolution =  (10.0 * 4912.0 / 8190.0);
-
-  //char test[] = "AT+UART=9600,1,0";
-  //char test[] = "Hola\n\r";
-  //test = "Hola\r\n";
-  //HAL_GPIO_WritePin(EN_GPIO_Port, EN_Pin, GPIO_PIN_RESET);
-  //HAL_Delay(2000);
-  //HAL_UART_Transmit(&huart5, (uint8_t *)test, sizeof(test), HAL_MAX_DELAY);
-  //HAL_GPIO_WritePin(EN_GPIO_Port, EN_Pin, GPIO_PIN_RESET);
-
-  char rx_buffer[20];
+  printf("PreeRTOS\r\n");
 
   /* USER CODE END 2 */
 
+  /* Init scheduler */
+  osKernelInitialize();
+
+  /* USER CODE BEGIN RTOS_MUTEX */
+  /* add mutexes, ... */
+  /* USER CODE END RTOS_MUTEX */
+
+  /* USER CODE BEGIN RTOS_SEMAPHORES */
+  /* add semaphores, ... */
+  /* USER CODE END RTOS_SEMAPHORES */
+
+  /* USER CODE BEGIN RTOS_TIMERS */
+  /* start timers, add new ones, ... */
+  /* USER CODE END RTOS_TIMERS */
+
+  /* USER CODE BEGIN RTOS_QUEUES */
+  /* add queues, ... */
+  /* USER CODE END RTOS_QUEUES */
+
+  /* Create the thread(s) */
+  /* creation of defaultTask */
+  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
+
+  /* USER CODE BEGIN RTOS_THREADS */
+  /* add threads, ... */
+  traction_setpoint = malloc(sizeof(float));
+  //float *arg = malloc(sizeof(float));
+  /*arg = 0.75f;
+  //float starting_traction = 0.75;
+  //Handle_Action_TractionSetpoint = osThreadNew(Function_Action_TractionSetpoint, (void *)arg, &Attributes_Action_TractionSetpoint);
+   */
+  Handle_Task_Steering     = osThreadNew(Function_Task_Steering, NULL, &Attributes_Task_Steering);
+  Handle_Task_StateMachine = osThreadNew(Function_Task_StateMachine, NULL, &Attributes_Task_StateMachine);
+  Handle_Task_UART         = osThreadNew(Function_Task_UART, NULL, &Attributes_Task_UART);
+  /* USER CODE END RTOS_THREADS */
+
+  /* USER CODE BEGIN RTOS_EVENTS */
+  /* add events, ... */
+  /* USER CODE END RTOS_EVENTS */
+
+  /* Start scheduler */
+  osKernelStart();
+
+  /* We should never get here as control is now taken by the scheduler */
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
     /* USER CODE END WHILE */
-
-	mpu9250_update_accel_gyro(&mpu);
-    printf("X: %.2f Y: %.2f Z: %.2f P: %.2f Q: %.2f R: %.2f Temp: %.2f\r\n", mpu.accel_x, mpu.accel_y, mpu.accel_z, mpu.gyro_x, mpu.gyro_y, mpu.gyro_z, mpu.temp);
-	HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
-
-	//HAL_UART_Receive(&huart5, &rx_buffer, sizeof(rx_buffer), 200);
-	//while (HAL_UART_GetState(&huart5) != HAL_UART_STATE_READY) {}
-
-	//printf((uint8_t*)rx_buffer);
-	HAL_Delay(100);
-
 
     /* USER CODE BEGIN 3 */
   }
@@ -208,10 +257,8 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_BYPASS;
-  RCC_OscInitStruct.HSIState = RCC_HSI_DIV1;
-  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
   RCC_OscInitStruct.PLL.PLLM = 2;
@@ -247,164 +294,105 @@ void SystemClock_Config(void)
 }
 
 /**
-  * @brief Peripherals Common Clock Configuration
-  * @retval None
-  */
-void PeriphCommonClock_Config(void)
-{
-  RCC_PeriphCLKInitTypeDef PeriphClkInitStruct = {0};
-
-  /** Initializes the peripherals clock
-  */
-  PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_CKPER;
-  PeriphClkInitStruct.CkperClockSelection = RCC_CLKPSOURCE_HSI;
-  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
-  {
-    Error_Handler();
-  }
-}
-
-/**
-  * @brief I2C2 Initialization Function
+  * @brief TIM13 Initialization Function
   * @param None
   * @retval None
   */
-static void MX_I2C2_Init(void)
+static void MX_TIM13_Init(void)
 {
 
-  /* USER CODE BEGIN I2C2_Init 0 */
+  /* USER CODE BEGIN TIM13_Init 0 */
 
-  /* USER CODE END I2C2_Init 0 */
+  /* USER CODE END TIM13_Init 0 */
 
-  /* USER CODE BEGIN I2C2_Init 1 */
+  TIM_OC_InitTypeDef sConfigOC = {0};
 
-  /* USER CODE END I2C2_Init 1 */
-  hi2c2.Instance = I2C2;
-  hi2c2.Init.Timing = 0x307075B1;
-  hi2c2.Init.OwnAddress1 = 0;
-  hi2c2.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
-  hi2c2.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
-  hi2c2.Init.OwnAddress2 = 0;
-  hi2c2.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
-  hi2c2.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
-  hi2c2.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
-  if (HAL_I2C_Init(&hi2c2) != HAL_OK)
+  /* USER CODE BEGIN TIM13_Init 1 */
+
+  /* USER CODE END TIM13_Init 1 */
+  htim13.Instance = TIM13;
+  htim13.Init.Prescaler = 0;
+  htim13.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim13.Init.Period = 65535;
+  htim13.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim13.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim13) != HAL_OK)
   {
     Error_Handler();
   }
-
-  /** Configure Analogue filter
-  */
-  if (HAL_I2CEx_ConfigAnalogFilter(&hi2c2, I2C_ANALOGFILTER_ENABLE) != HAL_OK)
+  if (HAL_TIM_PWM_Init(&htim13) != HAL_OK)
   {
     Error_Handler();
   }
-
-  /** Configure Digital filter
-  */
-  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c2, 0) != HAL_OK)
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim13, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN I2C2_Init 2 */
+  /* USER CODE BEGIN TIM13_Init 2 */
 
-  /* USER CODE END I2C2_Init 2 */
+
+  TIM13->ARR = 63999;
+  TIM13->PSC = 74;
+  TIM13->CCR1 = (uint32_t)(63999*0.15);
+  HAL_TIM_PWM_Start(&htim13, TIM_CHANNEL_1);
+
+  /* USER CODE END TIM13_Init 2 */
+  HAL_TIM_MspPostInit(&htim13);
 
 }
 
 /**
-  * @brief SPI1 Initialization Function
+  * @brief TIM14 Initialization Function
   * @param None
   * @retval None
   */
-static void MX_SPI1_Init(void)
+static void MX_TIM14_Init(void)
 {
 
-  /* USER CODE BEGIN SPI1_Init 0 */
+  /* USER CODE BEGIN TIM14_Init 0 */
 
-  /* USER CODE END SPI1_Init 0 */
+  /* USER CODE END TIM14_Init 0 */
 
-  /* USER CODE BEGIN SPI1_Init 1 */
+  TIM_OC_InitTypeDef sConfigOC = {0};
 
-  /* USER CODE END SPI1_Init 1 */
-  /* SPI1 parameter configuration*/
-  hspi1.Instance = SPI1;
-  hspi1.Init.Mode = SPI_MODE_MASTER;
-  hspi1.Init.Direction = SPI_DIRECTION_2LINES;
-  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
-  hspi1.Init.CLKPolarity = SPI_POLARITY_HIGH;
-  hspi1.Init.CLKPhase = SPI_PHASE_2EDGE;
-  hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
-  hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
-  hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
-  hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
-  hspi1.Init.CRCPolynomial = 0x0;
-  hspi1.Init.NSSPMode = SPI_NSS_PULSE_ENABLE;
-  hspi1.Init.NSSPolarity = SPI_NSS_POLARITY_LOW;
-  hspi1.Init.FifoThreshold = SPI_FIFO_THRESHOLD_01DATA;
-  hspi1.Init.TxCRCInitializationPattern = SPI_CRC_INITIALIZATION_ALL_ZERO_PATTERN;
-  hspi1.Init.RxCRCInitializationPattern = SPI_CRC_INITIALIZATION_ALL_ZERO_PATTERN;
-  hspi1.Init.MasterSSIdleness = SPI_MASTER_SS_IDLENESS_00CYCLE;
-  hspi1.Init.MasterInterDataIdleness = SPI_MASTER_INTERDATA_IDLENESS_00CYCLE;
-  hspi1.Init.MasterReceiverAutoSusp = SPI_MASTER_RX_AUTOSUSP_DISABLE;
-  hspi1.Init.MasterKeepIOState = SPI_MASTER_KEEP_IO_STATE_DISABLE;
-  hspi1.Init.IOSwap = SPI_IO_SWAP_DISABLE;
-  if (HAL_SPI_Init(&hspi1) != HAL_OK)
+  /* USER CODE BEGIN TIM14_Init 1 */
+
+  /* USER CODE END TIM14_Init 1 */
+  htim14.Instance = TIM14;
+  htim14.Init.Prescaler = 0;
+  htim14.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim14.Init.Period = 65535;
+  htim14.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim14.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim14) != HAL_OK)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN SPI1_Init 2 */
-
-  /* USER CODE END SPI1_Init 2 */
-
-}
-
-/**
-  * @brief UART5 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_UART5_Init(void)
-{
-
-  /* USER CODE BEGIN UART5_Init 0 */
-
-  /* USER CODE END UART5_Init 0 */
-
-  /* USER CODE BEGIN UART5_Init 1 */
-
-  /* USER CODE END UART5_Init 1 */
-  huart5.Instance = UART5;
-  huart5.Init.BaudRate = 115200;
-  huart5.Init.WordLength = UART_WORDLENGTH_8B;
-  huart5.Init.StopBits = UART_STOPBITS_1;
-  huart5.Init.Parity = UART_PARITY_NONE;
-  huart5.Init.Mode = UART_MODE_TX_RX;
-  huart5.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart5.Init.OverSampling = UART_OVERSAMPLING_16;
-  huart5.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-  huart5.Init.ClockPrescaler = UART_PRESCALER_DIV1;
-  huart5.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-  if (HAL_UART_Init(&huart5) != HAL_OK)
+  if (HAL_TIM_PWM_Init(&htim14) != HAL_OK)
   {
     Error_Handler();
   }
-  if (HAL_UARTEx_SetTxFifoThreshold(&huart5, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim14, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
   {
     Error_Handler();
   }
-  if (HAL_UARTEx_SetRxFifoThreshold(&huart5, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_DisableFifoMode(&huart5) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN UART5_Init 2 */
+  /* USER CODE BEGIN TIM14_Init 2 */
 
-  /* USER CODE END UART5_Init 2 */
+  TIM14->ARR = 63999;
+  TIM14->PSC = 74;
+  TIM14->CCR1 = (uint32_t)(63999*0.15);
+  HAL_TIM_PWM_Start(&htim14, TIM_CHANNEL_1);
+
+  /* USER CODE END TIM14_Init 2 */
+  HAL_TIM_MspPostInit(&htim14);
 
 }
 
@@ -467,6 +455,7 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOC_CLK_ENABLE();
+  __HAL_RCC_GPIOF_CLK_ENABLE();
   __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
@@ -476,16 +465,13 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(SPI_CS_GPIO_Port, SPI_CS_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, LD1_Pin|LD3_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, LD1_Pin|LD3_Pin|H_IN_1_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(EN_GPIO_Port, EN_Pin, GPIO_PIN_SET);
-
-  /*Configure GPIO pin : B1_Pin */
-  GPIO_InitStruct.Pin = B1_Pin;
+  /*Configure GPIO pin : B2_Pin */
+  GPIO_InitStruct.Pin = B2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(B2_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : SPI_CS_Pin */
   GPIO_InitStruct.Pin = SPI_CS_Pin;
@@ -494,8 +480,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(SPI_CS_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : LD1_Pin EN_Pin LD3_Pin */
-  GPIO_InitStruct.Pin = LD1_Pin|EN_Pin|LD3_Pin;
+  /*Configure GPIO pins : LD1_Pin LD3_Pin H_IN_1_Pin */
+  GPIO_InitStruct.Pin = LD1_Pin|LD3_Pin|H_IN_1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -505,7 +491,119 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+void Function_Action_TractionSetpoint(void *argument){
+    float setpoint = *((float *)argument);
+
+    printf("Setpoint: %f\r\n", setpoint);
+    TIM14->CCR1 = (uint32_t)(63999*setpoint);
+
+
+    HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_SET);
+    osDelay(100);
+    HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
+    osDelay(100);
+    HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_SET);
+	  osDelay(100);
+	  HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
+	  osDelay(100);
+
+    osThreadTerminate(Handle_Action_TractionSetpoint);
+}
+
+void Function_Task_Steering(void *argument){
+    for(;;){
+      TIM13->CCR1 = (uint32_t)((63999*0.05)+(63999*0.05*delta_steering));
+      printf("Steering: %f\r\n", delta_steering);
+      osDelay(100);
+    }
+}
+
+void Function_Task_StateMachine(void *argument){
+  uint8_t state = 0;
+  for(;;){
+    if(state == 0){
+        delta_steering = 0.5f;
+        *traction_setpoint = 0.5f;
+	    Handle_Action_TractionSetpoint = osThreadNew(Function_Action_TractionSetpoint, (void *)traction_setpoint, &Attributes_Action_TractionSetpoint);
+        HAL_GPIO_WritePin(H_IN_1_GPIO_Port, H_IN_1_Pin, GPIO_PIN_RESET);
+        osDelay(5000);
+        state = 1;
+      }else if(state == 1){
+        delta_steering = 0.75f;
+        HAL_GPIO_WritePin(H_IN_1_GPIO_Port, H_IN_1_Pin, GPIO_PIN_SET);
+        osDelay(3000);
+        delta_steering = 0.25f;
+        osDelay(3000);
+        state = 2;
+      }else if(state == 2){
+        delta_steering = 0.5f;
+        HAL_GPIO_WritePin(H_IN_1_GPIO_Port, H_IN_1_Pin, GPIO_PIN_RESET);
+        osDelay(5000);
+        HAL_GPIO_WritePin(H_IN_1_GPIO_Port, H_IN_1_Pin, GPIO_PIN_SET);
+        osDelay(3000);
+        state = 0;
+      }else{
+        state = 0;
+      }
+  }
+}
+
+void Function_Task_UART(void *argument){
+  for(;;){
+    HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
+    osDelay(1000);
+  }
+}
+
 /* USER CODE END 4 */
+
+/* USER CODE BEGIN Header_StartDefaultTask */
+/**
+  * @brief  Function implementing the defaultTask thread.
+  * @param  argument: Not used
+  * @retval None
+  */
+/* USER CODE END Header_StartDefaultTask */
+void StartDefaultTask(void *argument)
+{
+  /* USER CODE BEGIN 5 */
+  /*float setpoint = 0.8f;
+  float delta = 0.8f;
+  for(;;){
+	  osDelay(3000);
+	  *traction_setpoint = setpoint;
+    delta_steering = delta;
+	  setpoint -= 0.1f;
+	  delta -= 0.1f;
+  
+	  Handle_Action_TractionSetpoint = osThreadNew(Function_Action_TractionSetpoint, (void *)traction_setpoint, &Attributes_Action_TractionSetpoint);
+  }*/
+  for(;;){
+    osDelay(10000);
+  }
+  /* USER CODE END 5 */
+}
+
+/**
+  * @brief  Period elapsed callback in non blocking mode
+  * @note   This function is called  when TIM7 interrupt took place, inside
+  * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
+  * a global variable "uwTick" used as application time base.
+  * @param  htim : TIM handle
+  * @retval None
+  */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+  /* USER CODE BEGIN Callback 0 */
+
+  /* USER CODE END Callback 0 */
+  if (htim->Instance == TIM7) {
+    HAL_IncTick();
+  }
+  /* USER CODE BEGIN Callback 1 */
+
+  /* USER CODE END Callback 1 */
+}
 
 /**
   * @brief  This function is executed in case of error occurrence.
