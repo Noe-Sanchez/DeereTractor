@@ -65,6 +65,14 @@ const osThreadAttr_t Attributes_Task_IndicatorLED = {
 };
 uint8_t indicator_mode = 1;
 
+osThreadId_t Handle_Task_IndicatorLED;
+
+const osThreadAttr_t Attributes_Task_Wireless = {
+  .name = "Task_Wireless",
+  .stack_size = 128 * 8,
+  .priority = (osPriority_t) osPriorityAboveNormal,
+};
+
 
 /* USER CODE END PV */
 
@@ -75,12 +83,15 @@ void StartDefaultTask(void *argument);
 /* USER CODE BEGIN PFP */
 
 void Function_Task_IndicatorLED(void *argument);
+void Function_Task_Wireless(void *argument);
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+uint64_t RxpipeAddrs = 0x11223344BB;
+char myRxData[50];
+char myAckPayload[32] = "Ack by STMF7!";
 /* USER CODE END 0 */
 
 /**
@@ -114,7 +125,16 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
+    NRF24_begin(GPIOC, GPIO_PIN_6, GPIO_PIN_7, hspi1);
+  	nrf24_DebugUART_Init(huart3);
 
+  	NRF24_setAutoAck(false);
+  	NRF24_setChannel(52);
+  	NRF24_setPayloadSize(32);
+  	NRF24_setDataRate(RF24_2MBPS);
+  	NRF24_openReadingPipe(0, RxpipeAddrs);
+  	printRadioSettings();
+  	NRF24_startListening();
   /* USER CODE END Init */
 
   /* USER CODE BEGIN SysInit */
@@ -154,6 +174,7 @@ int main(void)
   /* add threads, ... */
 
   Handle_Task_IndicatorLED       = osThreadNew(Function_Task_IndicatorLED,       NULL,        &Attributes_Task_IndicatorLED);
+  Handle_Task_Wireless      = osThreadNew(Function_Task_Wireless,       NULL,        &Attributes_Task_Wireless);
 
   /* USER CODE END RTOS_THREADS */
 
@@ -274,6 +295,14 @@ void Function_Task_IndicatorLED(void *argument){
 			  break;
 	  	  }
 	  }
+  }
+}
+
+void Function_Task_Wireless(void *argument){
+  for(;;){
+    NRF24_read(myRxData, 32);
+	  myRxData[32] = '\r'; myRxData[32+1] = '\n';
+	  HAL_UART_Transmit(&huart3, (uint8_t *)myRxData, 32+2, 10);
   }
 }
 
