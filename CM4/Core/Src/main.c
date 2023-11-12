@@ -22,6 +22,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "myprintf.h"
+#include "MY_NRF24.h"
 
 /* USER CODE END Includes */
 
@@ -45,6 +47,8 @@
 
 /* Private variables ---------------------------------------------------------*/
 
+SPI_HandleTypeDef hspi1;
+
 UART_HandleTypeDef huart3;
 
 /* Definitions for defaultTask */
@@ -65,23 +69,24 @@ const osThreadAttr_t Attributes_Task_IndicatorLED = {
 };
 uint8_t indicator_mode = 1;
 
-osThreadId_t Handle_Task_IndicatorLED;
+osThreadId_t Handle_Task_Wireless;
 
 const osThreadAttr_t Attributes_Task_Wireless = {
   .name = "Task_Wireless",
-  .stack_size = 128 * 8,
-  .priority = (osPriority_t) osPriorityAboveNormal,
+  .stack_size = 128 * 16,
+  .priority = (osPriority_t) osPriorityNormal,
 };
 
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
-static void MX_GPIO_Init(void);
+static void MX_SPI1_Init(void);
 void StartDefaultTask(void *argument);
 
 /* USER CODE BEGIN PFP */
-
+void MX_GPIO_Init(void);
+void MX_USART3_UART_Init(void);
 void Function_Task_IndicatorLED(void *argument);
 void Function_Task_Wireless(void *argument);
 
@@ -89,8 +94,8 @@ void Function_Task_Wireless(void *argument);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-uint64_t RxpipeAddrs = 0x11223344BB;
-char myRxData[50];
+uint64_t RxpipeAddrs = 0x11223344AA;
+uint8_t myRxData[50];
 char myAckPayload[32] = "Ack by STMF7!";
 /* USER CODE END 0 */
 
@@ -125,16 +130,7 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-    NRF24_begin(GPIOC, GPIO_PIN_6, GPIO_PIN_7, hspi1);
-  	nrf24_DebugUART_Init(huart3);
 
-  	NRF24_setAutoAck(false);
-  	NRF24_setChannel(52);
-  	NRF24_setPayloadSize(32);
-  	NRF24_setDataRate(RF24_2MBPS);
-  	NRF24_openReadingPipe(0, RxpipeAddrs);
-  	printRadioSettings();
-  	NRF24_startListening();
   /* USER CODE END Init */
 
   /* USER CODE BEGIN SysInit */
@@ -142,9 +138,25 @@ int main(void)
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
-  MX_GPIO_Init();
+  MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
+  MX_USART3_UART_Init();
+  MX_GPIO_Init();
 
+
+  NRF24_begin(GPIOC, GPIO_PIN_6, GPIO_PIN_7, hspi1);
+    	nrf24_DebugUART_Init(huart3);
+    	printf("Prueba\r\n");
+
+	 NRF24_setAutoAck(false);
+	  NRF24_setChannel(52);
+	  NRF24_setPayloadSize(32);
+	  NRF24_setDataRate(RF24_2MBPS);
+	  NRF24_openReadingPipe(0, RxpipeAddrs);
+	  NRF24_enableDynamicPayloads();
+	  //NRF24_enableAckPayload();
+	  printRadioSettings();
+	  NRF24_startListening();
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -198,6 +210,54 @@ int main(void)
 }
 
 /**
+  * @brief SPI1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI1_Init(void)
+{
+
+  /* USER CODE BEGIN SPI1_Init 0 */
+
+  /* USER CODE END SPI1_Init 0 */
+
+  /* USER CODE BEGIN SPI1_Init 1 */
+
+  /* USER CODE END SPI1_Init 1 */
+  /* SPI1 parameter configuration*/
+  hspi1.Instance = SPI1;
+  hspi1.Init.Mode = SPI_MODE_MASTER;
+  hspi1.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi1.Init.NSS = SPI_NSS_SOFT;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
+  hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi1.Init.CRCPolynomial = 0x0;
+  hspi1.Init.NSSPMode = SPI_NSS_PULSE_ENABLE;
+  hspi1.Init.NSSPolarity = SPI_NSS_POLARITY_LOW;
+  hspi1.Init.FifoThreshold = SPI_FIFO_THRESHOLD_01DATA;
+  hspi1.Init.TxCRCInitializationPattern = SPI_CRC_INITIALIZATION_ALL_ZERO_PATTERN;
+  hspi1.Init.RxCRCInitializationPattern = SPI_CRC_INITIALIZATION_ALL_ZERO_PATTERN;
+  hspi1.Init.MasterSSIdleness = SPI_MASTER_SS_IDLENESS_00CYCLE;
+  hspi1.Init.MasterInterDataIdleness = SPI_MASTER_INTERDATA_IDLENESS_00CYCLE;
+  hspi1.Init.MasterReceiverAutoSusp = SPI_MASTER_RX_AUTOSUSP_DISABLE;
+  hspi1.Init.MasterKeepIOState = SPI_MASTER_KEEP_IO_STATE_DISABLE;
+  hspi1.Init.IOSwap = SPI_IO_SWAP_DISABLE;
+  if (HAL_SPI_Init(&hspi1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SPI1_Init 2 */
+
+  /* USER CODE END SPI1_Init 2 */
+
+}
+
+/**
   * @brief USART3 Initialization Function
   * @param None
   * @retval None
@@ -213,7 +273,7 @@ void MX_USART3_UART_Init(void)
 
   /* USER CODE END USART3_Init 1 */
   huart3.Instance = USART3;
-  huart3.Init.BaudRate = 9600;
+  huart3.Init.BaudRate = 115200;
   huart3.Init.WordLength = UART_WORDLENGTH_8B;
   huart3.Init.StopBits = UART_STOPBITS_1;
   huart3.Init.Parity = UART_PARITY_NONE;
@@ -250,15 +310,28 @@ void MX_USART3_UART_Init(void)
   * @param None
   * @retval None
   */
-static void MX_GPIO_Init(void)
+void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
 
   /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOD_CLK_ENABLE();
+  __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOE_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_6|GPIO_PIN_7, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pins : PC6 PC7 */
+  GPIO_InitStruct.Pin = GPIO_PIN_6|GPIO_PIN_7;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pin : LD2_Pin */
   GPIO_InitStruct.Pin = LD2_Pin;
@@ -299,10 +372,16 @@ void Function_Task_IndicatorLED(void *argument){
 }
 
 void Function_Task_Wireless(void *argument){
-  for(;;){
+  uint16_t x = 0;
+  uint16_t y = 0;
+  uint16_t z = 0;
+	for(;;){
     NRF24_read(myRxData, 32);
-	  myRxData[32] = '\r'; myRxData[32+1] = '\n';
-	  HAL_UART_Transmit(&huart3, (uint8_t *)myRxData, 32+2, 10);
+    x = ((uint16_t)myRxData[0] <<8) | (uint16_t)myRxData[1];
+    y = ((uint16_t)myRxData[2] <<8) | (uint16_t)myRxData[3];
+    z = ((uint16_t)myRxData[4] <<8) | (uint16_t)myRxData[5];
+	printf("X: %u, Y: %u, °5D:%u\r\n", x, y,z);
+	osDelay(1000);
   }
 }
 
