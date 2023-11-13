@@ -22,7 +22,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "myprintf.h"
+#include "MY_NRF24.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -65,6 +66,13 @@ const osThreadAttr_t Attributes_Task_IndicatorLED = {
 };
 uint8_t indicator_mode = 1;
 
+osThreadId_t Handle_Task_Wireless;
+
+const osThreadAttr_t Attributes_Task_Wireless = {
+  .name = "Task_Wireless",
+  .stack_size = 128 * 16,
+  .priority = (osPriority_t) osPriorityNormal,
+};
 
 /* USER CODE END PV */
 
@@ -75,12 +83,15 @@ void StartDefaultTask(void *argument);
 /* USER CODE BEGIN PFP */
 
 void Function_Task_IndicatorLED(void *argument);
+void Function_Task_Wireless(void *argument);
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+uint64_t RxpipeAddrs = 0x11223344AA;
+uint8_t myRxData[50];
+char myAckPayload[32] = "Ack by STMF7!";
 /* USER CODE END 0 */
 
 /**
@@ -124,6 +135,21 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   /* USER CODE BEGIN 2 */
+  MX_USART3_UART_Init();
+
+  NRF24_begin(GPIOC, GPIO_PIN_6, GPIO_PIN_7, hspi1);
+  nrf24_DebugUART_Init(huart3);
+  printf("Prueba\r\n");
+
+  NRF24_setAutoAck(false);
+  NRF24_setChannel(52);
+  NRF24_setPayloadSize(32);
+  NRF24_setDataRate(RF24_2MBPS);
+  NRF24_openReadingPipe(0, RxpipeAddrs);
+  NRF24_enableDynamicPayloads();
+  //NRF24_enableAckPayload();
+  printRadioSettings();
+  NRF24_startListening();
 
   /* USER CODE END 2 */
 
@@ -154,7 +180,7 @@ int main(void)
   /* add threads, ... */
 
   Handle_Task_IndicatorLED       = osThreadNew(Function_Task_IndicatorLED,       NULL,        &Attributes_Task_IndicatorLED);
-
+  Handle_Task_Wireless      = osThreadNew(Function_Task_Wireless,       NULL,        &Attributes_Task_Wireless);
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
@@ -274,6 +300,20 @@ void Function_Task_IndicatorLED(void *argument){
 			  break;
 	  	  }
 	  }
+  }
+}
+
+void Function_Task_Wireless(void *argument){
+  uint16_t x = 0;
+  uint16_t y = 0;
+  uint16_t z = 0;
+	for(;;){
+    NRF24_read(myRxData, 32);
+    x = ((uint16_t)myRxData[0] <<8) | (uint16_t)myRxData[1];
+    y = ((uint16_t)myRxData[2] <<8) | (uint16_t)myRxData[3];
+    z = ((uint16_t)myRxData[4] <<8) | (uint16_t)myRxData[5];
+	printf("X: %u, Y: %u, °:%u\r\n", x, y,z);
+	osDelay(1000);
   }
 }
 
